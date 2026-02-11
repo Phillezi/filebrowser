@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -60,6 +61,13 @@ func addConfigFlags(flags *pflag.FlagSet) {
 
 	flags.Uint64("tus.chunkSize", settings.DefaultTusChunkSize, "the tus chunk size")
 	flags.Uint16("tus.retryCount", settings.DefaultTusRetryCount, "the tus retry count")
+
+	flags.String("auth.oidc.issuer", "", "the oidc issuer to use when auth method is oidc")
+	flags.String("auth.oidc.clientID", "", "the oidc clientID to use when auth method is oidc")
+	flags.String("auth.oidc.clientSecret", "", "the oidc client secret to use when auth method is oidc")
+	flags.String("auth.oidc.redirectURL", "/auth/oidc/callback", "the oidc redirectURL to use when auth method is oidc")
+	flags.String("auth.oidc.providerName", "oidc", "the oidc provider name to be displayed on the login page when auth method is oidc")
+	flags.String("auth.oidc.userScope", "{{ .Sub }}", "template string for the scope used for users created when logging in through oidc, only applicable when auth method is oidc")
 }
 
 func getAuthMethod(flags *pflag.FlagSet, defaults ...interface{}) (settings.AuthMethod, map[string]interface{}, error) {
@@ -99,7 +107,7 @@ func getProxyAuth(flags *pflag.FlagSet, defaultAuther map[string]interface{}) (a
 		return nil, err
 	}
 
-	if header == ""  && defaultAuther != nil {
+	if header == "" && defaultAuther != nil {
 		header = defaultAuther["header"].(string)
 	}
 
@@ -169,6 +177,27 @@ func getHookAuth(flags *pflag.FlagSet, defaultAuther map[string]interface{}) (au
 	return &auth.HookAuth{Command: command}, nil
 }
 
+func getOIDCAuth(flags *pflag.FlagSet, _ map[string]any) (auth.Auther, error) {
+	issuer, err := flags.GetString("auth.oidc.issuer")
+	if err != nil {
+		return nil, err
+	}
+
+	clientID, err := flags.GetString("auth.oidc.clientID")
+	if err != nil {
+		return nil, err
+	}
+
+	clientSecret, _ := flags.GetString("auth.oidc.clientSecret")
+
+	redirectURL, err := flags.GetString("auth.oidc.redirectURL")
+	if err != nil {
+		return nil, err
+	}
+
+	return auth.NewOIDCAuth(issuer, clientID, clientSecret, redirectURL)
+}
+
 func getAuthentication(flags *pflag.FlagSet, defaults ...interface{}) (settings.AuthMethod, auth.Auther, error) {
 	method, defaultAuther, err := getAuthMethod(flags, defaults...)
 	if err != nil {
@@ -185,6 +214,8 @@ func getAuthentication(flags *pflag.FlagSet, defaults ...interface{}) (settings.
 		auther, err = getJSONAuth(flags, defaultAuther)
 	case auth.MethodHookAuth:
 		auther, err = getHookAuth(flags, defaultAuther)
+	case auth.MethodOIDCAuth:
+		auther, err = getOIDCAuth(flags, defaultAuther)
 	default:
 		return "", nil, fberrors.ErrInvalidAuthMethod
 	}
@@ -352,9 +383,46 @@ func getSettings(flags *pflag.FlagSet, set *settings.Settings, ser *settings.Ser
 			set.Tus.ChunkSize, err = flags.GetUint64(flag.Name)
 		case "tus.retryCount":
 			set.Tus.RetryCount, err = flags.GetUint16(flag.Name)
+
+		// oidc related
+		case "auth.oidc.clientID", "auth.oidc.clientid":
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+			set.Auth.OIDC.ClientID, err = flags.GetString(flag.Name)
+		case "auth.oidc.clientSecret", "auth.oidc.clientsecret":
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+			set.Auth.OIDC.ClientSecret, err = flags.GetString(flag.Name)
+		case "auth.oidc.issuer":
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+			set.Auth.OIDC.Issuer, err = flags.GetString(flag.Name)
+		case "auth.oidc.redirectURL", "auth.oidc.redirecturl":
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+			set.Auth.OIDC.RedirectURL, err = flags.GetString(flag.Name)
+		case "auth.oidc.providerName", "auth.oidc.providername":
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+			var err2 error
+			v, err2 := flags.GetString(flag.Name)
+			if err2 == nil {
+				set.Auth.OIDC.ProviderName = &v
+			}
+		case "auth.oidc.userScope":
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+			set.Auth.OIDC.UserScope, err = flags.GetString(flag.Name)
 		}
 
 		if err != nil {
+			log.Println("err:", err.Error())
 			errs = append(errs, err)
 		}
 	}

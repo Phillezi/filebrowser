@@ -10,9 +10,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,13 +87,15 @@ func init() {
 	// Runtime flags for the root command
 	flags := rootCmd.Flags()
 	flags.Bool("noauth", false, "use the noauth auther when using quick setup")
+	flags.String("authMethod", "", "specify auth method to use when using quick setup")
 	flags.String("username", "admin", "username for the first user when using quick setup")
 	flags.String("password", "", "hashed password for the first user when using quick setup")
-	flags.Uint32("socketPerm", 0666, "unix socket file permissions")
+	flags.Uint32("socketPerm", 0o666, "unix socket file permissions")
 	flags.String("cacheDir", "", "file cache directory (disabled if empty)")
 	flags.String("redisCacheUrl", "", "redis cache URL (for multi-instance deployments), e.g. redis://user:pass@host:port")
 	flags.Int("imageProcessors", 4, "image processors count")
 	addServerFlags(flags)
+	addAuthFlags(flags)
 }
 
 // addServerFlags adds server related flags to the given FlagSet. These flags are available
@@ -111,6 +115,15 @@ func addServerFlags(flags *pflag.FlagSet) {
 	flags.Bool("disableExec", true, "disables Command Runner feature")
 	flags.Bool("disableTypeDetectionByHeader", false, "disables type detection by reading file headers")
 	flags.Bool("disableImageResolutionCalc", false, "disables image resolution calculation by reading image files")
+}
+
+func addAuthFlags(flags *pflag.FlagSet) {
+	flags.String("auth.oidc.clientID", "", "clientID to use when auth method is oidc")
+	flags.String("auth.oidc.clientSecret", "", "clientSecret to use when auth method is oidc")
+	flags.String("auth.oidc.issuer", "", "issuer to use when auth method is oidc")
+	flags.String("auth.oidc.redirectURL", "", "redirectURL to use when auth method is oidc")
+	flags.String("auth.oidc.providerName", "oidc", "provider name to display when auth method is oidc")
+	flags.String("auth.oidc.userScope", "{{ .Sub }}", "scope that gets set for new users when using oidc")
 }
 
 var rootCmd = &cobra.Command{
@@ -172,7 +185,7 @@ user created with the credentials from options "username" and "password".`,
 		var fileCache diskcache.Interface = diskcache.NewNoOp()
 		cacheDir := v.GetString("cacheDir")
 		if cacheDir != "" {
-			if err := os.MkdirAll(cacheDir, 0700); err != nil {
+			if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 				return fmt.Errorf("can't make directory %s: %w", cacheDir, err)
 			}
 			fileCache = diskcache.New(afero.NewOsFs(), cacheDir)
@@ -218,7 +231,8 @@ user created with the credentials from options "username" and "password".`,
 			}
 			listener, err = tls.Listen("tcp", adr, &tls.Config{
 				MinVersion:   tls.VersionTLS12,
-				Certificates: []tls.Certificate{cer}},
+				Certificates: []tls.Certificate{cer},
+			},
 			)
 			if err != nil {
 				return err
@@ -428,10 +442,35 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 		Rules:    nil,
 	}
 
+	if err := getBrandingSettings(v, set); err != nil {
+		return err
+	}
+
+	if err := getAuthSettings(v, set); err != nil {
+		return err
+	}
+
 	var err error
 	if v.GetBool("noauth") {
 		set.AuthMethod = auth.MethodNoAuth
 		err = s.Auth.Save(&auth.NoAuth{})
+	} else if authMethod := v.GetString("authMethod"); authMethod != "" {
+		switch authMethod {
+		case string(auth.MethodOIDCAuth):
+			oidc, err := auth.NewOIDCAuth(set.Auth.OIDC.Issuer, set.Auth.OIDC.ClientID, set.Auth.OIDC.ClientSecret, set.Auth.OIDC.RedirectURL)
+			if err != nil {
+				return err
+			}
+			set.AuthMethod = auth.MethodOIDCAuth
+			if err := s.Auth.Save(oidc); err != nil {
+				return err
+			}
+		default:
+			set.AuthMethod = auth.MethodJSONAuth
+			if err := s.Auth.Save(&auth.JSONAuth{}); err != nil {
+				return err
+			}
+		}
 	} else {
 		set.AuthMethod = auth.MethodJSONAuth
 		err = s.Auth.Save(&auth.JSONAuth{})
@@ -499,4 +538,58 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 	user.Perm.Admin = true
 
 	return s.Users.Save(user)
+}
+
+func getAuthSettings(v *viper.Viper, set *settings.Settings) error {
+	if v.IsSet("auth") {
+		authSettings := v.Sub("auth")
+
+		if authSettings.IsSet("oidc") {
+			oidcSettings := authSettings.Sub("oidc")
+
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+
+			set.Auth.OIDC.ClientID = oidcSettings.GetString("clientID")
+			set.Auth.OIDC.ClientSecret = oidcSettings.GetString("clientSecret")
+			set.Auth.OIDC.Issuer = oidcSettings.GetString("issuer")
+			set.Auth.OIDC.RedirectURL = oidcSettings.GetString("redirectURL")
+			if oidcSettings.IsSet("providerName") {
+				providerName := oidcSettings.GetString("providerName")
+				set.Auth.OIDC.ProviderName = &providerName
+			}
+			set.Auth.OIDC.UserScope = oidcSettings.GetString("userScope")
+
+			// TODO: validation
+
+			if _, err := url.Parse(set.Auth.OIDC.Issuer); err != nil {
+				return fmt.Errorf("invalid issuer provided: %s, %w", set.Auth.OIDC.Issuer, err)
+			}
+			if _, err := url.Parse(set.Auth.OIDC.RedirectURL); err != nil {
+				return fmt.Errorf("invalid redirectURL provided: %s, %w", set.Auth.OIDC.RedirectURL, err)
+			}
+			if strings.TrimSpace(set.Auth.OIDC.ClientID) == "" {
+				return fmt.Errorf("clientID is required when using oidc auth method, but was not provided")
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func getBrandingSettings(v *viper.Viper, set *settings.Settings) error {
+	if v.IsSet("branding") {
+		brandingSettings := v.Sub("branding")
+
+		set.Branding.Name = brandingSettings.GetString("name")
+		set.Branding.Color = brandingSettings.GetString("color")
+		set.Branding.DisableExternal = brandingSettings.GetBool("disableExternal")
+		set.Branding.DisableUsedPercentage = brandingSettings.GetBool("disableUsedPercentage")
+		set.Branding.Files = brandingSettings.GetString("files")
+		set.Branding.Theme = brandingSettings.GetString("theme")
+	}
+
+	return nil
 }

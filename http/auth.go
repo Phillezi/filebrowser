@@ -125,9 +125,18 @@ func loginHandler(tokenExpireTime time.Duration) handleFunc {
 			return http.StatusInternalServerError, err
 		}
 
+		/*if v, ok := auther.(*auth.OIDCAuth); ok && v != nil {
+			if tok, err := r.Cookie("oidc_token"); err != nil || tok == nil || strings.TrimSpace(tok.Raw) == "" || tok.Expires.Before(time.Now()) {
+				// TODO: is this the best sol
+				v.LoginHandler().ServeHTTP(w, r)
+				return 0, nil
+			}
+		}*/
+
 		user, err := auther.Auth(r, d.store.Users, d.settings, d.server)
 		switch {
 		case errors.Is(err, os.ErrPermission):
+			log.Println("err:", err)
 			return http.StatusForbidden, nil
 		case err != nil:
 			return http.StatusInternalServerError, err

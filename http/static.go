@@ -27,6 +27,16 @@ func handleWithStaticData(w http.ResponseWriter, _ *http.Request, d *data, fSys 
 		return http.StatusInternalServerError, err
 	}
 
+	oidcEnabled := d.settings.AuthMethod == auth.MethodOIDCAuth
+	oidcLoginURL := "/auth/oidc/login"
+	oidcLogoutURL := "/auth/oidc/logout"
+	oidcProviderName := "oidc"
+	if d.settings.Auth.OIDC != nil {
+		if d.settings.Auth.OIDC.ProviderName != nil {
+			oidcProviderName = *d.settings.Auth.OIDC.ProviderName
+		}
+	}
+
 	data := map[string]interface{}{
 		"Name":                  d.settings.Branding.Name,
 		"DisableExternal":       d.settings.Branding.DisableExternal,
@@ -42,6 +52,10 @@ func handleWithStaticData(w http.ResponseWriter, _ *http.Request, d *data, fSys 
 		"LoginPage":             auther.LoginPage(),
 		"CSS":                   false,
 		"ReCaptcha":             false,
+		"OIDC":                  oidcEnabled,
+		"OIDCProviderName":      oidcProviderName,
+		"OIDCLoginURL":          oidcLoginURL,
+		"OIDCLogoutURL":         oidcLogoutURL,
 		"Theme":                 d.settings.Branding.Theme,
 		"EnableThumbs":          d.server.EnableThumbnails,
 		"ResizePreview":         d.server.ResizePreview,

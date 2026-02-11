@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/filebrowser/filebrowser/v2/auth"
+	fberrors "github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/settings"
 )
 
@@ -67,7 +68,7 @@ The path must be for a json or yaml file.`,
 			return err
 		}
 
-		var rawAuther = file.Auther
+		rawAuther := file.Auther
 
 		var auther auth.Auther
 		var autherErr error
@@ -88,8 +89,12 @@ The path must be for a json or yaml file.`,
 			var a interface{}
 			a, autherErr = getAuther(&auth.HookAuth{}, rawAuther)
 			auther = a.(*auth.HookAuth)
+		case auth.MethodOIDCAuth:
+			var a any
+			a, autherErr = getAuther(&auth.OIDCAuth{}, rawAuther)
+			auther = a.(*auth.OIDCAuth)
 		default:
-			return errors.New("invalid auth method")
+			return fberrors.ErrInvalidAuthMethod
 		}
 
 		if autherErr != nil {

@@ -10,11 +10,13 @@ import (
 	"github.com/filebrowser/filebrowser/v2/rules"
 )
 
-const DefaultUsersHomeBasePath = "/users"
-const DefaultLogoutPage = "/login"
-const DefaultMinimumPasswordLength = 12
-const DefaultFileMode = 0640
-const DefaultDirMode = 0750
+const (
+	DefaultUsersHomeBasePath     = "/users"
+	DefaultLogoutPage            = "/login"
+	DefaultMinimumPasswordLength = 12
+	DefaultFileMode              = 0o640
+	DefaultDirMode               = 0o750
+)
 
 // AuthMethod describes an authentication method.
 type AuthMethod string
@@ -28,6 +30,7 @@ type Settings struct {
 	UserHomeBasePath      string              `json:"userHomeBasePath"`
 	Defaults              UserDefaults        `json:"defaults"`
 	AuthMethod            AuthMethod          `json:"authMethod"`
+	Auth                  Auth                `json:"auth"`
 	LogoutPage            string              `json:"logoutPage"`
 	Branding              Branding            `json:"branding"`
 	Tus                   Tus                 `json:"tus"`
@@ -38,6 +41,20 @@ type Settings struct {
 	FileMode              fs.FileMode         `json:"fileMode"`
 	DirMode               fs.FileMode         `json:"dirMode"`
 	HideDotfiles          bool                `json:"hideDotfiles"`
+}
+
+type Auth struct {
+	// Method string `json:"method"`
+	OIDC *OIDC `json:"oidc,omitempty"`
+}
+
+type OIDC struct {
+	ClientID     string  `json:"clientID"`
+	ClientSecret string  `json:"clientSecret"`
+	Issuer       string  `json:"issuer"`
+	RedirectURL  string  `json:"redirectURL"`
+	ProviderName *string `json:"providerName,omitempty"`
+	UserScope    string  `json:"userScope"`
 }
 
 // GetRules implements rules.Provider.
