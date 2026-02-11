@@ -109,6 +109,7 @@ func addServerFlags(flags *pflag.FlagSet) {
 	flags.StringP("root", "r", ".", "root to prepend to relative paths")
 	flags.String("socket", "", "socket to listen to (cannot be used with address, port, cert nor key flags)")
 	flags.StringP("baseURL", "b", "", "base url")
+	flags.String("publicURL", "", "public url, defaults to [http<s if cert and key is set>://]<address>[:<port if not matching scheme>]<baseURL>")
 	flags.String("tokenExpirationTime", "2h", "user session timeout")
 	flags.Bool("disableThumbnails", false, "disable image thumbnails")
 	flags.Bool("disablePreviewResize", false, "disable resize of image previews")
@@ -257,6 +258,9 @@ user created with the credentials from options "username" and "password".`,
 		defer listener.Close()
 
 		log.Println("Listening on", listener.Addr().String())
+		if server.PublicURL != "" {
+			log.Println("Public url", server.PublicURL)
+		}
 		srv := &http.Server{
 			Handler:           handler,
 			ReadHeaderTimeout: 60 * time.Second,
@@ -341,6 +345,12 @@ func getServerSettings(v *viper.Viper, st *storage.Storage) (*settings.Server, e
 	} else if v := os.Getenv("FB_BASEURL"); v != "" {
 		log.Println("DEPRECATION NOTICE: Environment variable FB_BASEURL has been deprecated, use FB_BASE_URL instead")
 		server.BaseURL = v
+	}
+
+	if v.IsSet("publicURL") {
+		server.PublicURL = v.GetString("publicURL")
+	} else if !isSocketSet {
+		getPublicURL(server)
 	}
 
 	if v.IsSet("tokenExpirationTime") {
@@ -442,11 +452,35 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 		Rules:    nil,
 	}
 
+	ser := &settings.Server{
+		BaseURL:               v.GetString("baseURL"),
+		Port:                  v.GetString("port"),
+		Log:                   v.GetString("log"),
+		TLSKey:                v.GetString("key"),
+		TLSCert:               v.GetString("cert"),
+		Address:               v.GetString("address"),
+		Root:                  v.GetString("root"),
+		TokenExpirationTime:   v.GetString("tokenExpirationTime"),
+		EnableThumbnails:      !v.GetBool("disableThumbnails"),
+		ResizePreview:         !v.GetBool("disablePreviewResize"),
+		EnableExec:            !v.GetBool("disableExec"),
+		TypeDetectionByHeader: !v.GetBool("disableTypeDetectionByHeader"),
+		ImageResolutionCal:    !v.GetBool("disableImageResolutionCalc"),
+	}
+
+	if !v.IsSet("publicURL") {
+		getPublicURL(ser)
+	} else {
+		ser.PublicURL = v.GetString("publicURL")
+	}
+
+	ser.Clean()
+
 	if err := getBrandingSettings(v, set); err != nil {
 		return err
 	}
 
-	if err := getAuthSettings(v, set); err != nil {
+	if err := getAuthSettings(v, set, ser.PublicURL); err != nil {
 		return err
 	}
 
@@ -482,22 +516,6 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 	err = s.Settings.Save(set)
 	if err != nil {
 		return err
-	}
-
-	ser := &settings.Server{
-		BaseURL:               v.GetString("baseURL"),
-		Port:                  v.GetString("port"),
-		Log:                   v.GetString("log"),
-		TLSKey:                v.GetString("key"),
-		TLSCert:               v.GetString("cert"),
-		Address:               v.GetString("address"),
-		Root:                  v.GetString("root"),
-		TokenExpirationTime:   v.GetString("tokenExpirationTime"),
-		EnableThumbnails:      !v.GetBool("disableThumbnails"),
-		ResizePreview:         !v.GetBool("disablePreviewResize"),
-		EnableExec:            !v.GetBool("disableExec"),
-		TypeDetectionByHeader: !v.GetBool("disableTypeDetectionByHeader"),
-		ImageResolutionCal:    !v.GetBool("disableImageResolutionCalc"),
 	}
 
 	err = s.Settings.SaveServer(ser)
@@ -540,7 +558,7 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 	return s.Users.Save(user)
 }
 
-func getAuthSettings(v *viper.Viper, set *settings.Settings) error {
+func getAuthSettings(v *viper.Viper, set *settings.Settings, publicURL string) error {
 	if v.IsSet("auth") {
 		authSettings := v.Sub("auth")
 
@@ -554,14 +572,17 @@ func getAuthSettings(v *viper.Viper, set *settings.Settings) error {
 			set.Auth.OIDC.ClientID = oidcSettings.GetString("clientID")
 			set.Auth.OIDC.ClientSecret = oidcSettings.GetString("clientSecret")
 			set.Auth.OIDC.Issuer = oidcSettings.GetString("issuer")
-			set.Auth.OIDC.RedirectURL = oidcSettings.GetString("redirectURL")
+			if oidcSettings.IsSet("redirectURL") {
+				set.Auth.OIDC.RedirectURL = oidcSettings.GetString("redirectURL")
+			} else if publicURL != "" {
+				set.Auth.OIDC.RedirectURL = publicURL + "/auth/oidc/callback"
+			}
+
 			if oidcSettings.IsSet("providerName") {
 				providerName := oidcSettings.GetString("providerName")
 				set.Auth.OIDC.ProviderName = &providerName
 			}
 			set.Auth.OIDC.UserScope = oidcSettings.GetString("userScope")
-
-			// TODO: validation
 
 			if _, err := url.Parse(set.Auth.OIDC.Issuer); err != nil {
 				return fmt.Errorf("invalid issuer provided: %s, %w", set.Auth.OIDC.Issuer, err)
@@ -592,4 +613,24 @@ func getBrandingSettings(v *viper.Viper, set *settings.Settings) error {
 	}
 
 	return nil
+}
+
+func getPublicURL(server *settings.Server) string {
+	scheme := "http"
+	if server.TLSCert != "" && server.TLSKey != "" {
+		scheme += "s"
+	}
+	port := ""
+	switch scheme {
+	case "http":
+		if server.Port != "80" {
+			port = ":" + server.Port
+		}
+	case "https":
+		if server.Port != "443" {
+			port = ":" + server.Port
+		}
+	}
+	server.PublicURL = scheme + "://" + server.Address + port + server.BaseURL
+	return server.PublicURL
 }

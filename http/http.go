@@ -3,6 +3,7 @@ package fbhttp
 import (
 	"io/fs"
 	"net/http"
+	"path"
 
 	"github.com/gorilla/mux"
 
@@ -50,7 +51,7 @@ func NewHandler(
 		if v, ok := a.(*auth.OIDCAuth); ok && v != nil {
 			r.Handle("/auth/oidc/callback", v.CallbackHandler())
 			r.Handle("/auth/oidc/login", v.LoginHandler())
-			r.Handle("/auth/oidc/logout", v.LogoutHandler())
+			r.Handle("/auth/oidc/logout", v.LogoutHandler(path.Join(server.PublicURL, "/login")))
 		}
 	}
 

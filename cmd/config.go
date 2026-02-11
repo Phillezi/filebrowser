@@ -326,6 +326,8 @@ func getSettings(flags *pflag.FlagSet, set *settings.Settings, ser *settings.Ser
 			ser.Socket, err = flags.GetString(flag.Name)
 		case "baseURL":
 			ser.BaseURL, err = flags.GetString(flag.Name)
+		case "publicURL":
+			ser.PublicURL, err = flags.GetString(flag.Name)
 		case "tokenExpirationTime":
 			ser.TokenExpirationTime, err = flags.GetString(flag.Name)
 		case "disableThumbnails":

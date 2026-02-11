@@ -66,6 +66,7 @@ func (s *Settings) GetRules() []rules.Rule {
 type Server struct {
 	Root                  string `json:"root"`
 	BaseURL               string `json:"baseURL"`
+	PublicURL             string `json:"publicURL"` // The publicly accessible URL for the app
 	Socket                string `json:"socket"`
 	TLSKey                string `json:"tlsKey"`
 	TLSCert               string `json:"tlsCert"`
@@ -84,6 +85,7 @@ type Server struct {
 // Clean cleans any variables that might need cleaning.
 func (s *Server) Clean() {
 	s.BaseURL = strings.TrimSuffix(s.BaseURL, "/")
+	s.PublicURL = strings.TrimSuffix(s.PublicURL, "/")
 }
 
 func (s *Server) GetTokenExpirationTime(fallback time.Duration) time.Duration {

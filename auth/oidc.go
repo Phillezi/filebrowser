@@ -321,7 +321,7 @@ func (oa *OIDCAuth) LoginHandler() http.Handler {
 	})
 }
 
-func (oa *OIDCAuth) LogoutHandler() http.Handler {
+func (oa *OIDCAuth) LogoutHandler(postLogoutRedirectURI string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Read id_token before deleting
 		var idToken string
@@ -351,14 +351,13 @@ func (oa *OIDCAuth) LogoutHandler() http.Handler {
 			return
 		}
 
-		// Build Keycloak logout URL
 		logoutURL := oa.config.Issuer + "/protocol/openid-connect/logout"
-
-		redirectURI := url.QueryEscape("http://localhost:8080/login")
+		redirectURI := url.QueryEscape(postLogoutRedirectURI)
 
 		u := fmt.Sprintf(
-			"%s?id_token_hint=%s&post_logout_redirect_uri=%s",
+			"%s?client_id=%s&id_token_hint=%s&post_logout_redirect_uri=%s",
 			logoutURL,
+			url.QueryEscape(oa.config.ClientID),
 			url.QueryEscape(idToken),
 			redirectURI,
 		)
