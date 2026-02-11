@@ -385,12 +385,12 @@ func getSettings(flags *pflag.FlagSet, set *settings.Settings, ser *settings.Ser
 			set.Tus.RetryCount, err = flags.GetUint16(flag.Name)
 
 		// oidc related
-		case "auth.oidc.clientID":
+		case "auth.oidc.clientID", "auth.oidc.clientid":
 			if set.Auth.OIDC == nil {
 				set.Auth.OIDC = &settings.OIDC{}
 			}
 			set.Auth.OIDC.ClientID, err = flags.GetString(flag.Name)
-		case "auth.oidc.clientSecret":
+		case "auth.oidc.clientSecret", "auth.oidc.clientsecret":
 			if set.Auth.OIDC == nil {
 				set.Auth.OIDC = &settings.OIDC{}
 			}
@@ -400,12 +400,12 @@ func getSettings(flags *pflag.FlagSet, set *settings.Settings, ser *settings.Ser
 				set.Auth.OIDC = &settings.OIDC{}
 			}
 			set.Auth.OIDC.Issuer, err = flags.GetString(flag.Name)
-		case "auth.oidc.redirectURL":
+		case "auth.oidc.redirectURL", "auth.oidc.redirecturl":
 			if set.Auth.OIDC == nil {
 				set.Auth.OIDC = &settings.OIDC{}
 			}
 			set.Auth.OIDC.RedirectURL, err = flags.GetString(flag.Name)
-		case "auth.oidc.providerName":
+		case "auth.oidc.providerName", "auth.oidc.providername":
 			if set.Auth.OIDC == nil {
 				set.Auth.OIDC = &settings.OIDC{}
 			}

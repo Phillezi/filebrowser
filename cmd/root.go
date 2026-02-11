@@ -87,7 +87,7 @@ func init() {
 	// Runtime flags for the root command
 	flags := rootCmd.Flags()
 	flags.Bool("noauth", false, "use the noauth auther when using quick setup")
-	flags.String("auth", "", "specify auth method to use when using quick setup")
+	flags.String("authMethod", "", "specify auth method to use when using quick setup")
 	flags.String("username", "admin", "username for the first user when using quick setup")
 	flags.String("password", "", "hashed password for the first user when using quick setup")
 	flags.Uint32("socketPerm", 0o666, "unix socket file permissions")
@@ -95,6 +95,7 @@ func init() {
 	flags.String("redisCacheUrl", "", "redis cache URL (for multi-instance deployments), e.g. redis://user:pass@host:port")
 	flags.Int("imageProcessors", 4, "image processors count")
 	addServerFlags(flags)
+	addAuthFlags(flags)
 }
 
 // addServerFlags adds server related flags to the given FlagSet. These flags are available
@@ -114,6 +115,15 @@ func addServerFlags(flags *pflag.FlagSet) {
 	flags.Bool("disableExec", true, "disables Command Runner feature")
 	flags.Bool("disableTypeDetectionByHeader", false, "disables type detection by reading file headers")
 	flags.Bool("disableImageResolutionCalc", false, "disables image resolution calculation by reading image files")
+}
+
+func addAuthFlags(flags *pflag.FlagSet) {
+	flags.String("auth.oidc.clientID", "", "clientID to use when auth method is oidc")
+	flags.String("auth.oidc.clientSecret", "", "clientSecret to use when auth method is oidc")
+	flags.String("auth.oidc.issuer", "", "issuer to use when auth method is oidc")
+	flags.String("auth.oidc.redirectURL", "", "redirectURL to use when auth method is oidc")
+	flags.String("auth.oidc.providerName", "oidc", "provider name to display when auth method is oidc")
+	flags.String("auth.oidc.userScope", "{{ .Sub }}", "scope that gets set for new users when using oidc")
 }
 
 var rootCmd = &cobra.Command{

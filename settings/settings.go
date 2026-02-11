@@ -50,7 +50,7 @@ type Auth struct {
 
 type OIDC struct {
 	ClientID     string  `json:"clientID"`
-	ClientSecret string  `json:"clienSecret"`
+	ClientSecret string  `json:"clientSecret"`
 	Issuer       string  `json:"issuer"`
 	RedirectURL  string  `json:"redirectURL"`
 	ProviderName *string `json:"providerName,omitempty"`
