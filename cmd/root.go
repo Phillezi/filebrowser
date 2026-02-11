@@ -10,9 +10,11 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -85,9 +87,10 @@ func init() {
 	// Runtime flags for the root command
 	flags := rootCmd.Flags()
 	flags.Bool("noauth", false, "use the noauth auther when using quick setup")
+	flags.String("auth", "", "specify auth method to use when using quick setup")
 	flags.String("username", "admin", "username for the first user when using quick setup")
 	flags.String("password", "", "hashed password for the first user when using quick setup")
-	flags.Uint32("socketPerm", 0666, "unix socket file permissions")
+	flags.Uint32("socketPerm", 0o666, "unix socket file permissions")
 	flags.String("cacheDir", "", "file cache directory (disabled if empty)")
 	flags.String("redisCacheUrl", "", "redis cache URL (for multi-instance deployments), e.g. redis://user:pass@host:port")
 	flags.Int("imageProcessors", 4, "image processors count")
@@ -172,7 +175,7 @@ user created with the credentials from options "username" and "password".`,
 		var fileCache diskcache.Interface = diskcache.NewNoOp()
 		cacheDir := v.GetString("cacheDir")
 		if cacheDir != "" {
-			if err := os.MkdirAll(cacheDir, 0700); err != nil {
+			if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 				return fmt.Errorf("can't make directory %s: %w", cacheDir, err)
 			}
 			fileCache = diskcache.New(afero.NewOsFs(), cacheDir)
@@ -218,7 +221,8 @@ user created with the credentials from options "username" and "password".`,
 			}
 			listener, err = tls.Listen("tcp", adr, &tls.Config{
 				MinVersion:   tls.VersionTLS12,
-				Certificates: []tls.Certificate{cer}},
+				Certificates: []tls.Certificate{cer},
+			},
 			)
 			if err != nil {
 				return err
@@ -432,6 +436,40 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 	if v.GetBool("noauth") {
 		set.AuthMethod = auth.MethodNoAuth
 		err = s.Auth.Save(&auth.NoAuth{})
+	} else if authMethod := v.GetString("authMethod"); authMethod != "" {
+		switch authMethod {
+		case string(auth.MethodOIDCAuth):
+			authCfg := v.Sub("auth")
+			oidcCfg := authCfg.Sub("oidc")
+
+			issuer := oidcCfg.GetString("issuer")
+			clientID := oidcCfg.GetString("clientID")
+			clientSecret := oidcCfg.GetString("clientSecret")
+			redirectURL := oidcCfg.GetString("redirectURL")
+
+			if _, err := url.Parse(issuer); err != nil {
+				return fmt.Errorf("invalid issuer provided: %s, %w", issuer, err)
+			}
+			if _, err := url.Parse(redirectURL); err != nil {
+				return fmt.Errorf("invalid redirectURL provided: %s, %w", redirectURL, err)
+			}
+			if strings.TrimSpace(clientID) == "" {
+				return fmt.Errorf("clientID is required when using oidc auth method, but was not provided")
+			}
+			oidc, err := auth.NewOIDCAuth(issuer, clientID, clientSecret, redirectURL)
+			if err != nil {
+				return err
+			}
+			set.AuthMethod = auth.MethodOIDCAuth
+			if err := s.Auth.Save(oidc); err != nil {
+				return err
+			}
+		default:
+			set.AuthMethod = auth.MethodJSONAuth
+			if err := s.Auth.Save(&auth.JSONAuth{}); err != nil {
+				return err
+			}
+		}
 	} else {
 		set.AuthMethod = auth.MethodJSONAuth
 		err = s.Auth.Save(&auth.JSONAuth{})

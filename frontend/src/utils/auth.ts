@@ -117,11 +117,20 @@ export async function signup(username: string, password: string) {
 
 export function logout(reason?: string) {
   document.cookie = "auth=; Max-Age=0; Path=/; SameSite=Strict;";
+  document.cookie = "oidc_token=; Max-Age=0; Path=/; SameSite=Lax;";
+  document.cookie = "oidc_pkce=; Max-Age=0; Path=/; SameSite=Lax;";
 
   const authStore = useAuthStore();
   authStore.clearUser();
 
   localStorage.setItem("jwt", "");
+  
+  if (window.__OIDC_LOGOUT_URL__ != undefined && window.__OIDC_LOGOUT_URL__ != "") {
+    document.location.href = window.__OIDC_LOGOUT_URL__;
+    console.log("logout:", window.__OIDC_LOGOUT_URL__);
+    return;
+  }
+
   if (noAuth) {
     window.location.reload();
   } else if (logoutPage !== "/login") {

@@ -23,7 +23,7 @@ import (
 	"github.com/filebrowser/filebrowser/v2/storage/bolt"
 )
 
-const databasePermissions = 0640
+const databasePermissions = 0o640
 
 func getAndParseFileMode(flags *pflag.FlagSet, name string) (fs.FileMode, error) {
 	mode, err := flags.GetString(name)
@@ -57,7 +57,7 @@ func dbExists(path string) (bool, error) {
 		d := filepath.Dir(path)
 		_, err = os.Stat(d)
 		if os.IsNotExist(err) {
-			if err := os.MkdirAll(d, 0700); err != nil {
+			if err := os.MkdirAll(d, 0o700); err != nil {
 				return false, err
 			}
 			return false, nil
@@ -125,6 +125,9 @@ func initViper(cmd *cobra.Command) (*viper.Viper, error) {
 		log.Println("No config file used")
 	} else {
 		log.Printf("Using config file: %s", v.ConfigFileUsed())
+		for _, k := range v.AllKeys() {
+			log.Default().Printf("key: %s", k)
+		}
 	}
 
 	// Return Viper

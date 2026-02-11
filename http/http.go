@@ -6,6 +6,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"github.com/filebrowser/filebrowser/v2/auth"
 	"github.com/filebrowser/filebrowser/v2/settings"
 	"github.com/filebrowser/filebrowser/v2/storage"
 )
@@ -44,6 +45,14 @@ func NewHandler(
 	r.NotFoundHandler = index
 
 	api := r.PathPrefix("/api").Subrouter()
+
+	if a, err := store.Auth.Get(auth.MethodOIDCAuth); err == nil && a != nil {
+		if v, ok := a.(*auth.OIDCAuth); ok && v != nil {
+			r.Handle("/auth/oidc/callback", v.CallbackHandler())
+			r.Handle("/auth/oidc/login", v.LoginHandler())
+			r.Handle("/auth/oidc/logout", v.LogoutHandler())
+		}
+	}
 
 	tokenExpirationTime := server.GetTokenExpirationTime(DefaultTokenExpirationTime)
 	api.Handle("/login", monkey(loginHandler(tokenExpirationTime), ""))

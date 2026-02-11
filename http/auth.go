@@ -12,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-jwt/jwt/v5/request"
 
+	"github.com/filebrowser/filebrowser/v2/auth"
 	fbAuth "github.com/filebrowser/filebrowser/v2/auth"
 	fberrors "github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/settings"
@@ -125,9 +126,22 @@ func loginHandler(tokenExpireTime time.Duration) handleFunc {
 			return http.StatusInternalServerError, err
 		}
 
+		/*if v, ok := auther.(*auth.OIDCAuth); ok && v != nil {
+			if tok, err := r.Cookie("oidc_token"); err != nil || tok == nil || strings.TrimSpace(tok.Raw) == "" || tok.Expires.Before(time.Now()) {
+				// TODO: is this the best sol
+				v.LoginHandler().ServeHTTP(w, r)
+				return 0, nil
+			}
+		}*/
+
+		if _, ok := auther.(*auth.OIDCAuth); !ok {
+			log.Println("not oidc auth!")
+		}
+
 		user, err := auther.Auth(r, d.store.Users, d.settings, d.server)
 		switch {
 		case errors.Is(err, os.ErrPermission):
+			log.Println("err:", err)
 			return http.StatusForbidden, nil
 		case err != nil:
 			return http.StatusInternalServerError, err
