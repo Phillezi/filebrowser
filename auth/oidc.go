@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,11 +9,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/filebrowser/filebrowser/v2/settings"
 	"github.com/filebrowser/filebrowser/v2/users"
@@ -161,7 +164,20 @@ func (oa *OIDCAuth) Auth(r *http.Request, usr users.Store, stg *settings.Setting
 	}
 
 	sub := claims.Sub
-	scope := filepath.Join(srv.Root, sub)
+
+	scopeSuffix := sub
+	if stg.Auth.OIDC != nil && strings.TrimSpace(stg.Auth.OIDC.UserScope) != "" {
+		renderedScope, err := RenderAndValidatePath(stg.Auth.OIDC.UserScope, map[string]any{
+			"Sub": sub,
+		})
+		if err != nil {
+			log.Printf("[ERR] could not render userscope string, falling back to using the sub as the userScope")
+		} else {
+			scopeSuffix = renderedScope
+		}
+	}
+
+	scope := filepath.Join(srv.Root, scopeSuffix)
 
 	// 4. Find or create user in File Browser DB
 	u, err := usr.Get(scope, username)
@@ -178,7 +194,7 @@ func (oa *OIDCAuth) Auth(r *http.Request, usr users.Store, stg *settings.Setting
 		u = &users.User{
 			Username: username,
 			Password: password,
-			Scope:    sub,
+			Scope:    scopeSuffix,
 			// default permissions
 			Perm: stg.Defaults.Perm,
 		}
@@ -186,7 +202,7 @@ func (oa *OIDCAuth) Auth(r *http.Request, usr users.Store, stg *settings.Setting
 			return nil, fmt.Errorf("cannot create user: %w", err)
 		}
 
-		if _, err := stg.MakeUserDir(username, sub, srv.Root); err != nil {
+		if _, err := stg.MakeUserDir(username, scopeSuffix, srv.Root); err != nil {
 			return nil, err
 		}
 	}
@@ -371,4 +387,41 @@ func generatePKCE() (verifier, challenge string, err error) {
 	challenge = base64.RawURLEncoding.EncodeToString(hash[:])
 
 	return verifier, challenge, nil
+}
+
+// RenderAndValidatePath renders a Go template and validates it as a safe filesystem path.
+func RenderAndValidatePath(tmpl string, vars map[string]any) (string, error) {
+	t, err := template.New("path").
+		Option("missingkey=error").
+		Parse(tmpl)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, vars); err != nil {
+		return "", err
+	}
+
+	rendered := strings.TrimSpace(buf.String())
+
+	if rendered == "" {
+		return "", errors.New("rendered path is empty")
+	}
+
+	clean := filepath.Clean(rendered)
+
+	if strings.Contains(clean, "..") {
+		return "", errors.New("path traversal detected (.. not allowed)")
+	}
+
+	if filepath.IsAbs(clean) {
+		return "", errors.New("absolute paths are not allowed")
+	}
+
+	if strings.ContainsAny(clean, `<>:"|?*`) {
+		return "", errors.New("path contains invalid characters")
+	}
+
+	return clean, nil
 }

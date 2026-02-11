@@ -12,7 +12,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/golang-jwt/jwt/v5/request"
 
-	"github.com/filebrowser/filebrowser/v2/auth"
 	fbAuth "github.com/filebrowser/filebrowser/v2/auth"
 	fberrors "github.com/filebrowser/filebrowser/v2/errors"
 	"github.com/filebrowser/filebrowser/v2/settings"
@@ -133,10 +132,6 @@ func loginHandler(tokenExpireTime time.Duration) handleFunc {
 				return 0, nil
 			}
 		}*/
-
-		if _, ok := auther.(*auth.OIDCAuth); !ok {
-			log.Println("not oidc auth!")
-		}
 
 		user, err := auther.Auth(r, d.store.Users, d.settings, d.server)
 		switch {

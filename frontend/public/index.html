@@ -14,6 +14,7 @@
 
     [{[ if .OIDC -]}]
     <script>
+      window.__OIDC_PROVIDER_NAME__ = "[{[ .OIDCProviderName ]}]";
       window.__OIDC_LOGIN_URL__ = "[{[ .OIDCLoginURL ]}]";
       window.__OIDC_LOGOUT_URL__ = "[{[ .OIDCLogoutURL ]}]";
     </script>

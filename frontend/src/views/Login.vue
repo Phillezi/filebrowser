@@ -15,7 +15,7 @@
         :href="oidcLoginUrl"
         class="button button--block button--oidc"
       >
-        Login with Keycloak
+      Login with {{ oidcProviderName }}
       </a>
 
       <div
@@ -84,6 +84,7 @@ import { useRoute, useRouter } from "vue-router";
 
 declare global {
   interface Window {
+    __OIDC_PROVIDER_NAME__?: string;
     __OIDC_LOGIN_URL__?: string;
     __OIDC_LOGOUT_URL__?: string;
   }
@@ -95,6 +96,7 @@ const username = ref<string>("");
 const password = ref<string>("");
 const passwordConfirm = ref<string>("");
 
+const oidcProviderName = ref<string>("oidc");
 const oidcLoginUrl = ref<string>("");
 
 const route = useRoute();
@@ -175,6 +177,9 @@ onMounted(() => {
 
   if (window.__OIDC_LOGIN_URL__) {
     oidcLoginUrl.value = window.__OIDC_LOGIN_URL__;
+  }
+  if (window.__OIDC_PROVIDER_NAME__) {
+    oidcProviderName.value = window.__OIDC_PROVIDER_NAME__;
   }
 
   const oidc = route.query["oidc"] ?? undefined as string | undefined;

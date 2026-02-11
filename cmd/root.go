@@ -432,6 +432,14 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 		Rules:    nil,
 	}
 
+	if err := getBrandingSettings(v, set); err != nil {
+		return err
+	}
+
+	if err := getAuthSettings(v, set); err != nil {
+		return err
+	}
+
 	var err error
 	if v.GetBool("noauth") {
 		set.AuthMethod = auth.MethodNoAuth
@@ -439,24 +447,7 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 	} else if authMethod := v.GetString("authMethod"); authMethod != "" {
 		switch authMethod {
 		case string(auth.MethodOIDCAuth):
-			authCfg := v.Sub("auth")
-			oidcCfg := authCfg.Sub("oidc")
-
-			issuer := oidcCfg.GetString("issuer")
-			clientID := oidcCfg.GetString("clientID")
-			clientSecret := oidcCfg.GetString("clientSecret")
-			redirectURL := oidcCfg.GetString("redirectURL")
-
-			if _, err := url.Parse(issuer); err != nil {
-				return fmt.Errorf("invalid issuer provided: %s, %w", issuer, err)
-			}
-			if _, err := url.Parse(redirectURL); err != nil {
-				return fmt.Errorf("invalid redirectURL provided: %s, %w", redirectURL, err)
-			}
-			if strings.TrimSpace(clientID) == "" {
-				return fmt.Errorf("clientID is required when using oidc auth method, but was not provided")
-			}
-			oidc, err := auth.NewOIDCAuth(issuer, clientID, clientSecret, redirectURL)
+			oidc, err := auth.NewOIDCAuth(set.Auth.OIDC.Issuer, set.Auth.OIDC.ClientID, set.Auth.OIDC.ClientSecret, set.Auth.OIDC.RedirectURL)
 			if err != nil {
 				return err
 			}
@@ -537,4 +528,58 @@ func quickSetup(v *viper.Viper, s *storage.Storage) error {
 	user.Perm.Admin = true
 
 	return s.Users.Save(user)
+}
+
+func getAuthSettings(v *viper.Viper, set *settings.Settings) error {
+	if v.IsSet("auth") {
+		authSettings := v.Sub("auth")
+
+		if authSettings.IsSet("oidc") {
+			oidcSettings := authSettings.Sub("oidc")
+
+			if set.Auth.OIDC == nil {
+				set.Auth.OIDC = &settings.OIDC{}
+			}
+
+			set.Auth.OIDC.ClientID = oidcSettings.GetString("clientID")
+			set.Auth.OIDC.ClientSecret = oidcSettings.GetString("clientSecret")
+			set.Auth.OIDC.Issuer = oidcSettings.GetString("issuer")
+			set.Auth.OIDC.RedirectURL = oidcSettings.GetString("redirectURL")
+			if oidcSettings.IsSet("providerName") {
+				providerName := oidcSettings.GetString("providerName")
+				set.Auth.OIDC.ProviderName = &providerName
+			}
+			set.Auth.OIDC.UserScope = oidcSettings.GetString("userScope")
+
+			// TODO: validation
+
+			if _, err := url.Parse(set.Auth.OIDC.Issuer); err != nil {
+				return fmt.Errorf("invalid issuer provided: %s, %w", set.Auth.OIDC.Issuer, err)
+			}
+			if _, err := url.Parse(set.Auth.OIDC.RedirectURL); err != nil {
+				return fmt.Errorf("invalid redirectURL provided: %s, %w", set.Auth.OIDC.RedirectURL, err)
+			}
+			if strings.TrimSpace(set.Auth.OIDC.ClientID) == "" {
+				return fmt.Errorf("clientID is required when using oidc auth method, but was not provided")
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func getBrandingSettings(v *viper.Viper, set *settings.Settings) error {
+	if v.IsSet("branding") {
+		brandingSettings := v.Sub("branding")
+
+		set.Branding.Name = brandingSettings.GetString("name")
+		set.Branding.Color = brandingSettings.GetString("color")
+		set.Branding.DisableExternal = brandingSettings.GetBool("disableExternal")
+		set.Branding.DisableUsedPercentage = brandingSettings.GetBool("disableUsedPercentage")
+		set.Branding.Files = brandingSettings.GetString("files")
+		set.Branding.Theme = brandingSettings.GetString("theme")
+	}
+
+	return nil
 }

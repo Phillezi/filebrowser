@@ -122,12 +122,11 @@ func initViper(cmd *cobra.Command) (*viper.Viper, error) {
 			return nil, err
 		}
 
+		log.Println("[DEBUG] config read err:", err)
+
 		log.Println("No config file used")
 	} else {
 		log.Printf("Using config file: %s", v.ConfigFileUsed())
-		for _, k := range v.AllKeys() {
-			log.Default().Printf("key: %s", k)
-		}
 	}
 
 	// Return Viper
